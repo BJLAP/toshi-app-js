@@ -4,23 +4,13 @@ const Logger = require('./Logger');
 const SOFA = require('sofa-js');
 const numberToBN = require('number-to-bn');
 
-function getUrl(path, proto) {
-  var endpoint;
-  if (!proto) proto = 'https';
-  if (process.env['STAGE'] == 'development') {
-    endpoint = proto + '://token-eth-service-development.herokuapp.com';
-  } else {
-    endpoint = proto + '://token-eth-service.herokuapp.com';
-  }
-  return endpoint + path;
-}
-
 function getLocalTimestamp() {
   return parseInt(new Date().getTime() / 1000);
 }
 
 class WebsocketClient {
-  constructor(signing_key) {
+  constructor(base_url, signing_key) {
+    this.base_url = base_url;
     this.signing_key = signing_key;
     this.ws = null;
     this.subscriptions = {};
@@ -54,7 +44,7 @@ class WebsocketClient {
         "/v1/ws" + "\n" +
         timestamp + "\n";
     let sig = this.signing_key.sign(data);
-    this.ws = new WebSocket(getUrl('/v1/ws', 'wss'), [], {
+    this.ws = new WebSocket(this.base_url.replace('https://', 'wss://') + '/v1/ws', [], {
       headers: {
         'Token-ID-Address': this.signing_key.address,
         'Token-Timestamp': timestamp,
@@ -185,9 +175,18 @@ class WebsocketClient {
   }
 }
 
-class EthService {
-  static getBalance(address) {
-    return rp(getUrl('/v1/balance/' + address))
+class EthServiceClient {
+
+  constructor() {}
+
+  initialize(base_url, signing_key) {
+    this.base_url = base_url;
+    this.signing_key = signing_key;
+    this.ws = null;
+  }
+
+  getBalance(address) {
+    return rp(this._getUrl('/v1/balance/' + address))
       .then((body) => {
         return numberToBN(JSON.parse(body).unconfirmed_balance);
       })
@@ -196,8 +195,8 @@ class EthService {
       });
   }
 
-  static getTransaction(hash) {
-    return rp(getUrl('/v1/tx/' + hash))
+  getTransaction(hash) {
+    return rp(this._getUrl('/v1/tx/' + hash))
       .then((body) => {
         body = JSON.parse(body);
         body.gasPrice = numberToBN(body.gasPrice);
@@ -212,14 +211,9 @@ class EthService {
       });
   }
 
-  constructor(signing_key) {
-    this.signing_key = signing_key;
-    this.ws = null;
-  }
-
   subscribe(address, callback, last_message_timestamp) {
     if (!this.ws) {
-      this.ws = new WebsocketClient(this.signing_key);
+      this.ws = new WebsocketClient(this.base_url, this.signing_key);
       this.ws.connect();
     }
     this.ws.subscribe(address, callback, last_message_timestamp);
@@ -237,4 +231,4 @@ class EthService {
 
 
 
-module.exports = EthService;
+module.exports = new EthServiceClient();
