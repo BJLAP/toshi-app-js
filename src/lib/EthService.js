@@ -185,6 +185,10 @@ class EthServiceClient {
     this.ws = null;
   }
 
+  _getUrl(path) {
+    return this.base_url + path;
+  }
+
   getBalance(address) {
     return rp(this._getUrl('/v1/balance/' + address))
       .then((body) => {
