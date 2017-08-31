@@ -1,5 +1,6 @@
 const fetch = require('./ServiceClient');
 const Logger = require('./Logger');
+const WebSocketConnection = require('./WebSocketConnection');
 
 let cached_users = {
 };
@@ -17,6 +18,11 @@ class IdServiceClient {
   initialize(base_url, signing_key) {
     this.signing_key = signing_key;
     this.base_url = base_url;
+    this.ws = new WebSocketConnection(this.base_url,
+                                      null,
+                                      this.signing_key,
+                                      "toshi-app-js");
+    this.ws.connect();
   }
 
   _getUrl(path) {
