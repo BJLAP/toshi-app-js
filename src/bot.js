@@ -69,7 +69,7 @@ function onPayment(session, message) {
 // STATES
 
 function welcome(session) {
-  sendMessage(session, `Hello Token!`)
+  sendMessage(session, `Hi, this is MicroLoans. How can I help you?`)
 }
 
 function pong(session) {
