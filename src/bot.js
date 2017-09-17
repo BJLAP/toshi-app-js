@@ -32,14 +32,20 @@ function onMessage(session, message) {
 
 function onCommand(session, command) {
   switch (command.content.value) {
-    case 'ping':
-      pong(session)
+    case 'loan':
+      loan(session)
       break
-    case 'count':
-      count(session)
+    case 'repay':
+      repay(session)
       break
     case 'donate':
       donate(session)
+      break
+    case 'eth':
+      payEth(session)
+      break
+    case 'usd':
+      payUsd(session)
       break
     }
 }
@@ -72,9 +78,6 @@ function welcome(session) {
   sendMessage(session, `Hi, this is MicroLoans. How can I help you?`)
 }
 
-function pong(session) {
-  sendMessage(session, `Pong`)
-}
 
 // example of how to store state on each user
 function count(session) {
@@ -83,10 +86,56 @@ function count(session) {
   sendMessage(session, `${count}`)
 }
 
+function loan(session) {
+  askForLoanDetails(session)
+}
+
+function repay(session) {
+   let loanType = session.get('loan')
+   if (loanType == 'ETH1') {
+     repayEth(session)
+   } else if (loanType == 'USD10') {
+     repayUsd(session)
+   }
+   else if (loanType == 'USD10') {
+    repayUsd(session)
+   }
+   else  {
+    sendMessageDonate(session)
+   }
+
+   session.set('loan', 'None')
+}
+
 function donate(session) {
-  // request $1 USD at current exchange rates
   Fiat.fetch().then((toEth) => {
-    session.requestEth(toEth.USD(1))
+    session.requestEth(toEth.USD(5), "Donation (USD 5)")
+  })
+}
+
+function payEth(session) {
+  session.sendEth(1, function(session, error, result) {
+    console.log(error)
+  })
+  session.set('loan', 'ETH1')
+  sendMessageNoButtons(session, "ETH 1 sent.")
+}
+
+function payUsd(session) {
+  Fiat.fetch().then((toEth) => {
+    session.sendEth(toEth.USD(10))
+  })
+  session.set('loan', 'USD10')
+  sendMessageNoButtons(session, "USD 10 sent.")
+}
+
+function repayEth(session) {
+  session.requestEth(1, "Repayment loan (ETH 1.00)");
+}
+
+function repayUsd(session) {
+  Fiat.fetch().then((toEth) => {
+    session.requestEth(toEth.USD(10), "Repayment loan (USD 10.00)")
   })
 }
 
@@ -94,9 +143,8 @@ function donate(session) {
 
 function sendMessage(session, message) {
   let controls = [
-    {type: 'button', label: 'Ping', value: 'ping'},
-    {type: 'button', label: 'Count', value: 'count'},
-    {type: 'button', label: 'Donate', value: 'donate'}
+    {type: 'button', label: 'Request Loan', value: 'loan'},
+    {type: 'button', label: 'Make Repayment', value: 'repay'}
   ]
   session.reply(SOFA.Message({
     body: message,
@@ -104,3 +152,34 @@ function sendMessage(session, message) {
     showKeyboard: false,
   }))
 }
+
+function sendMessageDonate(session) {
+  let controls = [
+    {type: 'button', label: 'Donate', value: 'donate'}
+  ]
+  session.reply(SOFA.Message({
+    body: "No loans to repay, do you want to donate USD 5?",
+    controls: controls,
+    showKeyboard: false,
+  }))
+}
+
+function sendMessageNoButtons(session, message) {
+  session.reply(SOFA.Message({
+    body: message,
+    showKeyboard: false,
+  }))
+}
+
+function askForLoanDetails(session) {
+  let controls = [
+    {type: 'button', label: 'USD 10.00', value: 'usd'},
+    {type: 'button', label: 'ETH 1.00', value: 'eth'}
+  ]
+  session.reply(SOFA.Message({
+    body: "Select a loan:",
+    controls: controls,
+    showKeyboard: false,
+  }))
+}
+
