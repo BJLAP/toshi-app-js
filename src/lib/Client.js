@@ -5,6 +5,7 @@ const Session = require('./Session');
 const Logger = require('./Logger');
 const EthService = require('./EthService');
 const IdService = require('./IdService');
+const FiatService = require('./Fiat');
 const Storage = require('./Storage');
 
 const JSONRPC_VERSION = '2.0';
@@ -17,13 +18,18 @@ class Client {
     this.rpcCalls = {};
     this.nextRpcId = 0;
 
-    this.config = new Config(process.argv[2]);
+    let stage = process.env.STAGE || 'development';
+    this.config = new Config('config/' + stage + '.yml');
+
+    IdService.initialize(this.config.token_id_service_url, this.config.identityKey);
+    EthService.initialize(this.config.token_ethereum_service_url, this.config.identityKey, this.config.paymentKey);
+    FiatService.initialize(this.config.token_exchange_service_url);
 
     Logger.info("TOKEN ID: " + this.config.tokenIdAddress);
     Logger.info("PAYMENT ADDRESS KEY: " + this.config.paymentAddress);
 
     if (this.config.storage.postgres) {
-      this.store = new Storage.PSQLStore(this.config.storage.postgres, this.config.storage.sslmode);
+      this.store = new Storage.PSQLStore(this.config.storage.postgres, this.config.storage.sslmode, stage);
     } else if (this.config.storage.sqlite) {
       this.store = new Storage.SqliteStore(this.config.storage.sqlite);
     }
@@ -32,7 +38,7 @@ class Client {
       host: this.config.redis.host,
       port: this.config.redis.port,
       password: this.config.redis.password
-    }
+    };
 
     this.subscriber = redis.createClient(redisConfig);
     this.rpcSubscriber = redis.createClient(redisConfig);
@@ -65,10 +71,14 @@ class Client {
                 session.set(k, sofa.content[k]);
               }
               this.bot.onClientMessage(session, sofa);
-              let held = session.get('heldForInit')
+              let held = session.get('heldForInit');
               if (held) {
-                session.set('heldForInit', null)
+                session.set('heldForInit', null);
                 let heldSofa = SOFA.parse(held);
+                if (heldSofa.type == 'Message' && heldSofa.body == '') {
+                  // ignore empty messages (a.k.a. bot wake up messages)
+                  return;
+                }
                 this.bot.onClientMessage(session, heldSofa);
               }
             } else if (sofa.type == "InitRequest") {
@@ -119,17 +129,17 @@ class Client {
     });
     this.rpcSubscriber.subscribe(this.config.tokenIdAddress+JSONRPC_RESPONSE_CHANNEL);
 
-    this.eth = new EthService(this.config.identityKey);
-
     // poll headless client for ready state
     // note: without this, if the eth service returns notifications before
     // the headless client is ready, the responses generated can be lost
     // in the redis void
+    let started = false;
     var interval = setInterval(() => {
       this.rpc({address: this.config.tokenIdAddress}, {
         method: "ping"
       }, (session, error, result) => {
-        if (result) {
+        if (result && !started) {
+          started = true;
           clearInterval(interval);
           Logger.info("Headless client ready...");
           this.configureServices();
@@ -142,7 +152,7 @@ class Client {
   configureServices() {
     // eth service monitoring
     this.store.getKey('lastTransactionTimestamp').then((last_timestamp) => {
-      this.eth.subscribe(this.config.paymentAddress, (raw_sofa) => {
+      EthService.subscribe(this.config.paymentAddress, (raw_sofa) => {
         let sofa = SOFA.parse(raw_sofa);
         let fut;
         let direction;
@@ -153,7 +163,7 @@ class Client {
         } else if (sofa.toAddress == this.config.paymentAddress) {
           // updating a payment sent to the bot
           fut = IdService.paymentAddressReverseLookup(sofa.fromAddress);
-          direction = "in"
+          direction = "in";
         } else {
           // this isn't actually interesting to us
           Logger.debug('got payment update for which neither the to or from address match ours!');
@@ -178,7 +188,7 @@ class Client {
           Logger.error(err);
         });
 
-        this.store.setKey('lastTransactionTimestamp', this.eth.get_last_message_timestamp(this.config.paymentAddress));
+        this.store.setKey('lastTransactionTimestamp', EthService.get_last_message_timestamp(this.config.paymentAddress));
       }, last_timestamp);
     }).catch((err) => {
       Logger.error(err);
@@ -187,13 +197,15 @@ class Client {
 
   send(address, message) {
     if (typeof message === "string") {
-      message = SOFA.Message({body: message})
+      message = SOFA.Message({body: message});
     }
     Logger.sentMessage(message, address);
+    let isArray = Array.isArray(address);
     this.publisher.publish(this.config.tokenIdAddress, JSON.stringify({
       sofa: message.string,
       sender: this.config.tokenIdAddress,
-      recipient: address
+      recipient: isArray ? undefined : address,
+      recipients: isArray ? address : undefined
     }));
   }
 
