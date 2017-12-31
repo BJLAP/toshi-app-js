@@ -32,6 +32,9 @@ function onMessage(session, message) {
 
 function onCommand(session, command) {
   switch (command.content.value) {
+    case 'identify':
+      identify(session)
+      break
     case 'loan':
       loan(session)
       break
@@ -90,6 +93,10 @@ function loan(session) {
   askForLoanDetails(session)
 }
 
+function identify(session) {
+  identifyCustomer(session);
+}
+
 function repay(session) {
    let loanType = session.get('loan')
    if (loanType == 'ETH1') {
@@ -143,7 +150,7 @@ function repayUsd(session) {
 
 function sendMessage(session, message) {
   let controls = [
-    {type: 'button', label: 'Request Loan', value: 'loan'},
+    {type: 'button', label: 'Request Loan', value: 'identify'},
     {type: 'button', label: 'Make Repayment', value: 'repay'}
   ]
   session.reply(SOFA.Message({
@@ -167,6 +174,19 @@ function sendMessageDonate(session) {
 function sendMessageNoButtons(session, message) {
   session.reply(SOFA.Message({
     body: message,
+    showKeyboard: false,
+  }))
+}
+
+function identifyCustomer(session) {
+  let controls = [
+    {type: 'button', label: 'Identify yourself  please', action: "Webview::http://www.deeskerhof.nl/dapp.html"},
+    {type: 'button', label: 'request loan', value: 'loan' }
+    
+  ]
+  session.reply(SOFA.Message({
+    body: "Identify and press loan button",
+    controls: controls,
     showKeyboard: false,
   }))
 }
